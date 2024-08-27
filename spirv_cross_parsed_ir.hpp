@@ -37,6 +37,21 @@ using namespace SPIRV_CROSS_SPV_HEADER_NAMESPACE;
 // It is intentionally very "open" and struct-like with some helper functions to deal with decorations.
 // Parser is the reference implementation of how this data structure should be filled in.
 
+enum Section
+{
+	SECTION_CAPS,
+	SECTION_EXTS,
+	SECTION_EXT_INST_IMPORT,
+	SECTION_MEM_MODEL,
+	SECTION_ENTRY_POINTS,
+	SECTION_EXEC_MODE,
+	SECTION_DEBUG,
+	SECTION_ANNOTATIONS,
+	SECTION_TYPES,
+	SECTION_FUNCS,
+	SECTION_COUNT,
+};
+
 class ParsedIR
 {
 private:
@@ -117,11 +132,42 @@ public:
 		bool es = false;
 		bool known = false;
 		bool hlsl = false;
+		uint32_t fileID = 0; // string
+		uint32_t sourceID = 0; // string
 
-		Source() = default;
+		struct Marker {
+			uint32_t line; // in source
+			uint32_t offset; // in spirv stream
+
+			SPIRFunction *function = nullptr;
+			SPIRBlock *block = nullptr;
+		};
+
+		std::vector<Marker> line_markers; // sorted by line
 	};
 
-	Source source;
+	std::vector<Source> sources;
+
+	// See spec "2.4. Logical Layout of a Module"
+	// Offsets to the beginning of the respective sections.
+	union {
+		struct Named {
+			uint32_t caps;
+			uint32_t exts;
+			uint32_t ext_inst_import;
+			uint32_t mem_model;
+			uint32_t entry_points;
+			uint32_t exec_mode;
+			uint32_t debug;
+			uint32_t annotations;
+			uint32_t types;
+			uint32_t funcs;
+		} named;
+
+		uint32_t unnamed[SECTION_COUNT];
+
+		static_assert(sizeof(unnamed) == sizeof(Named));
+	} section_offsets {};
 
 	AddressingModel addressing_model = AddressingModelMax;
 	MemoryModel memory_model = MemoryModelMax;

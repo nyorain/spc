@@ -52,6 +52,8 @@ private:
 	void parse(const Instruction &instr);
 	const uint32_t *stream(const Instruction &instr) const;
 
+	void updateSection(uint32_t section, uint32_t offset);
+
 	template <typename T, typename... P>
 	T &set(uint32_t id, P &&... args)
 	{
@@ -94,6 +96,7 @@ private:
 	// This must be an ordered data structure so we always pick the same type aliases.
 	SmallVector<uint32_t> global_struct_cache;
 	SmallVector<std::pair<uint32_t, uint32_t>> forward_pointer_fixups;
+	uint32_t section = 0;
 
 	bool types_are_logically_equivalent(const SPIRType &a, const SPIRType &b) const;
 	bool variable_storage_is_aliased(const SPIRVariable &v) const;

@@ -2,7 +2,7 @@ project('spc', ['c', 'cpp'],
 	version: '1.3.290',
 	default_options: [
 		'warning_level=3',
-		'cpp_std=c++17',
+		'cpp_std=c++20',
 		'default_library=static',
 	]
 )
@@ -38,3 +38,6 @@ spc_dep = declare_dependency(
 	compile_args: [],
 	link_with: [libspc],
 	dependencies: deps)
+
+sample = executable('sample', 'sample.cpp',
+	dependencies: [spc_dep])

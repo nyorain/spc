@@ -137,6 +137,13 @@ void Parser::parse()
 	}
 	forward_pointer_fixups.clear();
 
+	for(auto& source : ir.sources) {
+		auto cmp = [](const auto& a, const auto& b) {
+			return a.line < b.line;
+		};
+		std::sort(source.line_markers.begin(), source.line_markers.end(), cmp);
+	}
+
 	if (current_function)
 		SPIRV_CROSS_THROW("Function was not terminated.");
 	if (current_block)
@@ -177,6 +184,21 @@ static string extract_string(const vector<uint32_t> &spirv, uint32_t offset)
 	SPIRV_CROSS_THROW("String was not terminated before EOF");
 }
 
+void Parser::updateSection(uint32_t newSection, uint32_t offset) {
+	assert(newSection >= section);
+	assert(newSection <= std::size(ir.section_offsets.unnamed));
+
+	if(newSection == section) {
+		return;
+	}
+
+	for(; section < newSection; ++section) {
+		// offset - 1 is needed because in parse() we adjust offsets
+		// to point to the first argument
+		ir.section_offsets.unnamed[section] = offset - 1;
+	}
+}
+
 void Parser::parse(const Instruction &instruction)
 {
 	auto *ops = stream(instruction);
@@ -194,54 +216,72 @@ void Parser::parse(const Instruction &instruction)
 
 	switch (op)
 	{
-	case OpSourceContinued:
+	case OpSourceContinued: // TODO: support!
 	case OpSourceExtension:
-	case OpNop:
 	case OpModuleProcessed:
+		updateSection(7, instruction.offset);
+		break;
+
+	case OpNop:
 		break;
 
 	case OpString:
 	{
+		updateSection(7, instruction.offset);
 		set<SPIRString>(ops[0], extract_string(ir.spirv, instruction.offset + 1));
 		break;
 	}
 
 	case OpMemoryModel:
+		updateSection(4, instruction.offset);
 		ir.addressing_model = static_cast<AddressingModel>(ops[0]);
 		ir.memory_model = static_cast<MemoryModel>(ops[1]);
 		break;
 
 	case OpSource:
 	{
+		updateSection(7, instruction.offset);
+
 		auto lang = static_cast<SourceLanguage>(ops[0]);
+		auto& source = ir.sources.emplace_back();
 		switch (lang)
 		{
 		case SourceLanguageESSL:
-			ir.source.es = true;
-			ir.source.version = ops[1];
-			ir.source.known = true;
-			ir.source.hlsl = false;
+			source.es = true;
+			source.version = ops[1];
+			source.known = true;
+			source.hlsl = false;
 			break;
 
 		case SourceLanguageGLSL:
-			ir.source.es = false;
-			ir.source.version = ops[1];
-			ir.source.known = true;
-			ir.source.hlsl = false;
+			source.es = false;
+			source.version = ops[1];
+			source.known = true;
+			source.hlsl = false;
 			break;
 
 		case SourceLanguageHLSL:
 			// For purposes of cross-compiling, this is GLSL 450.
-			ir.source.es = false;
-			ir.source.version = 450;
-			ir.source.known = true;
-			ir.source.hlsl = true;
+			source.es = false;
+			source.version = 450;
+			source.known = true;
+			source.hlsl = true;
 			break;
 
 		default:
-			ir.source.known = false;
+			source.known = false;
 			break;
 		}
+
+		if(length > 2) {
+			source.fileID = ops[2];
+		}
+
+		if(length > 3) {
+			// TODO: nope, thats a literal
+			source.sourceID = ops[3];
+		}
+
 		break;
 	}
 
@@ -257,6 +297,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpCapability:
 	{
+		updateSection(1, instruction.offset);
+
 		uint32_t cap = ops[0];
 		if (cap == CapabilityKernel)
 			SPIRV_CROSS_THROW("Kernel capability not supported.");
@@ -267,6 +309,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpExtension:
 	{
+		updateSection(2, instruction.offset);
+
 		auto ext = extract_string(ir.spirv, instruction.offset);
 		ir.declared_extensions.push_back(std::move(ext));
 		break;
@@ -274,6 +318,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpExtInstImport:
 	{
+		updateSection(3, instruction.offset);
+
 		uint32_t id = ops[0];
 
 		SPIRExtension::Extension spirv_ext = SPIRExtension::Unsupported;
@@ -322,6 +368,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpEntryPoint:
 	{
+		updateSection(5, instruction.offset);
+
 		auto itr =
 		    ir.entry_points.insert(make_pair(ops[1], SPIREntryPoint(ops[1], static_cast<ExecutionModel>(ops[0]),
 		                                                            extract_string(ir.spirv, instruction.offset + 2))));
@@ -344,6 +392,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpExecutionMode:
 	{
+		updateSection(6, instruction.offset);
+
 		auto &execution = ir.entry_points[ops[0]];
 		auto mode = static_cast<ExecutionMode>(ops[1]);
 		execution.flags.set(mode);
@@ -376,6 +426,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpExecutionModeId:
 	{
+		updateSection(6, instruction.offset);
+
 		auto &execution = ir.entry_points[ops[0]];
 		auto mode = static_cast<ExecutionMode>(ops[1]);
 		execution.flags.set(mode);
@@ -392,6 +444,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpName:
 	{
+		updateSection(7, instruction.offset);
 		uint32_t id = ops[0];
 		ir.set_name(id, extract_string(ir.spirv, instruction.offset + 1));
 		break;
@@ -399,6 +452,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpMemberName:
 	{
+		updateSection(7, instruction.offset);
 		uint32_t id = ops[0];
 		uint32_t member = ops[1];
 		ir.set_member_name(id, member, extract_string(ir.spirv, instruction.offset + 2));
@@ -407,6 +461,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpDecorationGroup:
 	{
+		updateSection(8, instruction.offset);
+
 		// Noop, this simply means an ID should be a collector of decorations.
 		// The meta array is already a flat array of decorations which will contain the relevant decorations.
 		break;
@@ -414,6 +470,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpGroupDecorate:
 	{
+		updateSection(8, instruction.offset);
+
 		uint32_t group_id = ops[0];
 		auto &decorations = ir.meta[group_id].decoration;
 		auto &flags = decorations.decoration_flags;
@@ -443,6 +501,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpGroupMemberDecorate:
 	{
+		updateSection(8, instruction.offset);
+
 		uint32_t group_id = ops[0];
 		auto &flags = ir.meta[group_id].decoration.decoration_flags;
 
@@ -468,6 +528,8 @@ void Parser::parse(const Instruction &instruction)
 	case OpDecorate:
 	case OpDecorateId:
 	{
+		updateSection(8, instruction.offset);
+
 		// OpDecorateId technically supports an array of arguments, but our only supported decorations are single uint,
 		// so merge decorate and decorate-id here.
 		uint32_t id = ops[0];
@@ -486,6 +548,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpDecorateStringGOOGLE:
 	{
+		updateSection(8, instruction.offset);
+
 		uint32_t id = ops[0];
 		auto decoration = static_cast<Decoration>(ops[1]);
 		ir.set_decoration_string(id, decoration, extract_string(ir.spirv, instruction.offset + 2));
@@ -494,6 +558,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpMemberDecorate:
 	{
+		updateSection(8, instruction.offset);
+
 		uint32_t id = ops[0];
 		uint32_t member = ops[1];
 		auto decoration = static_cast<Decoration>(ops[2]);
@@ -506,6 +572,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpMemberDecorateStringGOOGLE:
 	{
+		updateSection(8, instruction.offset);
+
 		uint32_t id = ops[0];
 		uint32_t member = ops[1];
 		auto decoration = static_cast<Decoration>(ops[2]);
@@ -516,6 +584,8 @@ void Parser::parse(const Instruction &instruction)
 	// Build up basic types.
 	case OpTypeVoid:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
 		type.basetype = SPIRType::Void;
@@ -524,6 +594,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeBool:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
 		type.basetype = SPIRType::Boolean;
@@ -533,6 +605,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeFloat:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		uint32_t width = ops[1];
 		auto &type = set<SPIRType>(id, op);
@@ -550,6 +624,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeInt:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		uint32_t width = ops[1];
 		bool signedness = ops[2] != 0;
@@ -564,6 +640,8 @@ void Parser::parse(const Instruction &instruction)
 	// since we can refer to decorations on pointee classes which is needed for UBO/SSBO, I/O blocks in geometry/tess etc.
 	case OpTypeVector:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		uint32_t vecsize = ops[2];
 
@@ -579,6 +657,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeMatrix:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		uint32_t colcount = ops[2];
 
@@ -594,6 +674,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeArray:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		uint32_t tid = ops[1];
 		auto &base = get<SPIRType>(tid);
@@ -622,6 +704,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeRuntimeArray:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 
 		auto &base = get<SPIRType>(ops[1]);
@@ -644,6 +728,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeImage:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
 		type.basetype = SPIRType::Image;
@@ -660,6 +746,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeSampledImage:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		uint32_t imagetype = ops[1];
 		auto &type = set<SPIRType>(id, op);
@@ -671,6 +759,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeSampler:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
 		type.basetype = SPIRType::Sampler;
@@ -679,6 +769,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypePointer:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 
 		// Very rarely, we might receive a FunctionPrototype here.
@@ -711,6 +803,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeForwardPointer:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		auto &ptrbase = set<SPIRType>(id, op);
 		ptrbase.pointer = true;
@@ -726,6 +820,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeStruct:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
 		type.basetype = SPIRType::Struct;
@@ -764,6 +860,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeFunction:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		uint32_t ret = ops[1];
 
@@ -775,6 +873,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeAccelerationStructureKHR:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
 		type.basetype = SPIRType::AccelerationStructure;
@@ -783,6 +883,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeRayQueryKHR:
 	{
+		updateSection(9, instruction.offset);
+
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
 		type.basetype = SPIRType::RayQuery;
@@ -932,6 +1034,8 @@ void Parser::parse(const Instruction &instruction)
 	// Functions
 	case OpFunction:
 	{
+		updateSection(10, instruction.offset);
+
 		uint32_t res = ops[0];
 		uint32_t id = ops[1];
 		// Control
@@ -959,6 +1063,8 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpFunctionEnd:
 	{
+		updateSection(10, instruction.offset);
+
 		if (current_block)
 		{
 			// Very specific error message, but seems to come up quite often.
@@ -973,6 +1079,8 @@ void Parser::parse(const Instruction &instruction)
 	// Blocks
 	case OpLabel:
 	{
+		updateSection(10, instruction.offset);
+
 		// OpLabel always starts a block.
 		if (!current_function)
 			SPIRV_CROSS_THROW("Blocks cannot exist outside functions!");
@@ -1231,6 +1339,9 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpLine:
 	{
+		uint32_t file = ops[0];
+		uint32_t line = ops[1];
+
 		// OpLine might come at global scope, but we don't care about those since they will not be declared in any
 		// meaningful correct order.
 		// Ignore all OpLine directives which live outside a function.
@@ -1245,10 +1356,22 @@ void Parser::parse(const Instruction &instruction)
 			// Store the first one we find and emit it before creating the function prototype.
 			if (current_function->entry_line.file_id == 0)
 			{
-				current_function->entry_line.file_id = ops[0];
-				current_function->entry_line.line_literal = ops[1];
+				current_function->entry_line.file_id = file;
+				current_function->entry_line.line_literal = line;
 			}
 		}
+
+		for (auto& source : ir.sources) {
+			if (source.fileID == file) {
+				auto& marker = source.line_markers.emplace_back();
+				marker.line = line;
+				marker.offset = instruction.offset - 1;
+				marker.function = current_function;
+				marker.block = current_block;
+				break;
+			}
+		}
+
 		break;
 	}
 

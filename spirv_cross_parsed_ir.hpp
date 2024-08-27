@@ -115,11 +115,42 @@ public:
 		bool es = false;
 		bool known = false;
 		bool hlsl = false;
+		uint32_t fileID = 0; // string
+		uint32_t sourceID = 0; // string
 
-		Source() = default;
+		struct Marker {
+			uint32_t line; // in source
+			uint32_t offset; // in spirv stream
+
+			SPIRFunction *function = nullptr;
+			SPIRBlock *block = nullptr;
+		};
+
+		std::vector<Marker> line_markers; // sorted by line
 	};
 
-	Source source;
+	std::vector<Source> sources;
+
+	// See spec "2.4. Logical Layout of a Module"
+	// Offsets to the beginning of the respective sections.
+	union {
+		struct Named {
+			uint32_t caps;
+			uint32_t exts;
+			uint32_t extInstImport;
+			uint32_t memModel;
+			uint32_t entryPoints;
+			uint32_t execMode;
+			uint32_t debug;
+			uint32_t annotations;
+			uint32_t types;
+			uint32_t funcs;
+		} named;
+
+		uint32_t unnamed[10];
+
+		static_assert(sizeof(unnamed) == sizeof(Named));
+	} section_offsets {};
 
 	spv::AddressingModel addressing_model = spv::AddressingModelMax;
 	spv::MemoryModel memory_model = spv::MemoryModelMax;

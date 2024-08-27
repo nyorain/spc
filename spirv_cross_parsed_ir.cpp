@@ -78,7 +78,8 @@ ParsedIR &ParsedIR::operator=(ParsedIR &&other) SPIRV_CROSS_NOEXCEPT
 		memory_model = other.memory_model;
 
 		default_entry_point = other.default_entry_point;
-		source = other.source;
+		sources = std::move(other.sources);
+		section_offsets = other.section_offsets;
 		loop_iteration_depth_hard = other.loop_iteration_depth_hard;
 		loop_iteration_depth_soft = other.loop_iteration_depth_soft;
 
@@ -110,7 +111,8 @@ ParsedIR &ParsedIR::operator=(const ParsedIR &other)
 		continue_block_to_loop_header = other.continue_block_to_loop_header;
 		entry_points = other.entry_points;
 		default_entry_point = other.default_entry_point;
-		source = other.source;
+		sources = other.sources;
+		section_offsets = other.section_offsets;
 		loop_iteration_depth_hard = other.loop_iteration_depth_hard;
 		loop_iteration_depth_soft = other.loop_iteration_depth_soft;
 		addressing_model = other.addressing_model;

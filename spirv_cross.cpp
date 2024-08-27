@@ -3547,7 +3547,7 @@ bool Compiler::AnalyzeVariableScopeAccessHandler::handle(spv::Op op, const uint3
 
 	case OpCopyObject:
 	{
-		// OpCopyObject copies the underlying non-pointer type, 
+		// OpCopyObject copies the underlying non-pointer type,
 		// so any temp variable should be declared using the underlying type.
 		// If the type is a pointer, get its base type and overwrite the result type mapping.
 		auto &type = compiler.get<SPIRType>(result_type);
@@ -4969,12 +4969,14 @@ std::string Compiler::get_remapped_declared_block_name(uint32_t id, bool fallbac
 
 bool Compiler::reflection_ssbo_instance_name_is_significant() const
 {
-	if (ir.source.known)
-	{
-		// UAVs from HLSL source tend to be declared in a way where the type is reused
-		// but the instance name is significant, and that's the name we should report.
-		// For GLSL, SSBOs each have their own block type as that's how GLSL is written.
-		return ir.source.hlsl;
+	for(auto& source : ir.sources) {
+		if (source.known)
+		{
+			// UAVs from HLSL source tend to be declared in a way where the type is reused
+			// but the instance name is significant, and that's the name we should report.
+			// For GLSL, SSBOs each have their own block type as that's how GLSL is written.
+			return source.hlsl;
+		}
 	}
 
 	unordered_set<uint32_t> ssbo_type_ids;

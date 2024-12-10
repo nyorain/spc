@@ -129,6 +129,22 @@ struct InstrBuilder {
 		vals.clear();
 	}
 
+	void insert(std::vector<u32>& dst, spc::ParsedIR& ir, u32 sectionID) {
+		assert(sectionID < spc::SECTION_COUNT);
+		auto off = ir.section_offsets.unnamed[sectionID];
+
+		assert(dst.size() >= off);
+		vals[0] = u16(vals.size()) << 16 | u16(op);
+		dst.insert(dst.begin() + off, vals.begin(), vals.end());
+
+		// update section counts
+		for(auto i = sectionID; i < spc::SECTION_COUNT; ++i) {
+			ir.section_offsets.unnamed[i] += vals.size();
+		}
+
+		vals.clear();
+	}
+
 	template<typename T>
 	std::enable_if_t<std::is_integral_v<T> || std::is_enum_v<T>, InstrBuilder&>
 	push(T val) {
@@ -154,11 +170,11 @@ struct InstrBuilder {
 	}
 };
 
-void outputPatched(const spc::ParsedIR& ir, u32 file, u32 line) {
+void outputPatched(spc::ParsedIR& ir, u32 file, u32 line) {
 	auto copy = ir.spirv;
 
 	// set new memory addressing model
-	auto& addressing = copy[ir.section_offsets.named.memModel + 1];
+	auto& addressing = copy[ir.section_offsets.named.mem_model + 1];
 	if(addressing != u32(spv::AddressingModelPhysicalStorageBuffer64)) {
 		assert(addressing == u32(spv::AddressingModelLogical));
 		addressing = u32(spv::AddressingModelPhysicalStorageBuffer64);
@@ -167,12 +183,12 @@ void outputPatched(const spc::ParsedIR& ir, u32 file, u32 line) {
 	// add extension
 	InstrBuilder{spv::OpExtension}
 		.push("SPV_KHR_physical_storage_buffer")
-		.insert(copy, ir.section_offsets.named.exts);
+		.insert(copy, ir, spc::SECTION_EXTS);
 
 	// add capability
 	InstrBuilder{spv::OpCapability}
 		.push(spv::CapabilityPhysicalStorageBufferAddresses)
-		.insert(copy, ir.section_offsets.named.caps);
+		.insert(copy, ir, spc::SECTION_CAPS);
 
 	// find target position
 	assert(file < ir.sources.size());

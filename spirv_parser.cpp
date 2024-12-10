@@ -185,6 +185,8 @@ static string extract_string(const vector<uint32_t> &spirv, uint32_t offset)
 }
 
 void Parser::updateSection(uint32_t newSection, uint32_t offset) {
+	++newSection;
+
 	assert(newSection >= section);
 	assert(newSection <= std::size(ir.section_offsets.unnamed));
 
@@ -219,7 +221,7 @@ void Parser::parse(const Instruction &instruction)
 	case OpSourceContinued: // TODO: support!
 	case OpSourceExtension:
 	case OpModuleProcessed:
-		updateSection(7, instruction.offset);
+		updateSection(SECTION_DEBUG, instruction.offset);
 		break;
 
 	case OpNop:
@@ -227,20 +229,20 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpString:
 	{
-		updateSection(7, instruction.offset);
+		updateSection(SECTION_DEBUG, instruction.offset);
 		set<SPIRString>(ops[0], extract_string(ir.spirv, instruction.offset + 1));
 		break;
 	}
 
 	case OpMemoryModel:
-		updateSection(4, instruction.offset);
+		updateSection(SECTION_MEM_MODEL, instruction.offset);
 		ir.addressing_model = static_cast<AddressingModel>(ops[0]);
 		ir.memory_model = static_cast<MemoryModel>(ops[1]);
 		break;
 
 	case OpSource:
 	{
-		updateSection(7, instruction.offset);
+		updateSection(SECTION_DEBUG, instruction.offset);
 
 		auto lang = static_cast<SourceLanguage>(ops[0]);
 		auto& source = ir.sources.emplace_back();
@@ -297,7 +299,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpCapability:
 	{
-		updateSection(1, instruction.offset);
+		updateSection(SECTION_CAPS, instruction.offset);
 
 		uint32_t cap = ops[0];
 		if (cap == CapabilityKernel)
@@ -309,7 +311,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpExtension:
 	{
-		updateSection(2, instruction.offset);
+		updateSection(SECTION_EXTS, instruction.offset);
 
 		auto ext = extract_string(ir.spirv, instruction.offset);
 		ir.declared_extensions.push_back(std::move(ext));
@@ -318,7 +320,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpExtInstImport:
 	{
-		updateSection(3, instruction.offset);
+		updateSection(SECTION_EXT_INST_IMPORT, instruction.offset);
 
 		uint32_t id = ops[0];
 
@@ -368,7 +370,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpEntryPoint:
 	{
-		updateSection(5, instruction.offset);
+		updateSection(SECTION_ENTRY_POINTS, instruction.offset);
 
 		auto itr =
 		    ir.entry_points.insert(make_pair(ops[1], SPIREntryPoint(ops[1], static_cast<ExecutionModel>(ops[0]),
@@ -392,7 +394,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpExecutionMode:
 	{
-		updateSection(6, instruction.offset);
+		updateSection(SECTION_EXEC_MODE, instruction.offset);
 
 		auto &execution = ir.entry_points[ops[0]];
 		auto mode = static_cast<ExecutionMode>(ops[1]);
@@ -426,7 +428,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpExecutionModeId:
 	{
-		updateSection(6, instruction.offset);
+		updateSection(SECTION_EXEC_MODE, instruction.offset);
 
 		auto &execution = ir.entry_points[ops[0]];
 		auto mode = static_cast<ExecutionMode>(ops[1]);
@@ -444,7 +446,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpName:
 	{
-		updateSection(7, instruction.offset);
+		updateSection(SECTION_DEBUG, instruction.offset);
 		uint32_t id = ops[0];
 		ir.set_name(id, extract_string(ir.spirv, instruction.offset + 1));
 		break;
@@ -452,7 +454,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpMemberName:
 	{
-		updateSection(7, instruction.offset);
+		updateSection(SECTION_DEBUG, instruction.offset);
 		uint32_t id = ops[0];
 		uint32_t member = ops[1];
 		ir.set_member_name(id, member, extract_string(ir.spirv, instruction.offset + 2));
@@ -461,7 +463,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpDecorationGroup:
 	{
-		updateSection(8, instruction.offset);
+		updateSection(SECTION_ANNOTATIONS, instruction.offset);
 
 		// Noop, this simply means an ID should be a collector of decorations.
 		// The meta array is already a flat array of decorations which will contain the relevant decorations.
@@ -470,7 +472,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpGroupDecorate:
 	{
-		updateSection(8, instruction.offset);
+		updateSection(SECTION_ANNOTATIONS, instruction.offset);
 
 		uint32_t group_id = ops[0];
 		auto &decorations = ir.meta[group_id].decoration;
@@ -501,7 +503,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpGroupMemberDecorate:
 	{
-		updateSection(8, instruction.offset);
+		updateSection(SECTION_ANNOTATIONS, instruction.offset);
 
 		uint32_t group_id = ops[0];
 		auto &flags = ir.meta[group_id].decoration.decoration_flags;
@@ -528,7 +530,7 @@ void Parser::parse(const Instruction &instruction)
 	case OpDecorate:
 	case OpDecorateId:
 	{
-		updateSection(8, instruction.offset);
+		updateSection(SECTION_ANNOTATIONS, instruction.offset);
 
 		// OpDecorateId technically supports an array of arguments, but our only supported decorations are single uint,
 		// so merge decorate and decorate-id here.
@@ -548,7 +550,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpDecorateStringGOOGLE:
 	{
-		updateSection(8, instruction.offset);
+		updateSection(SECTION_ANNOTATIONS, instruction.offset);
 
 		uint32_t id = ops[0];
 		auto decoration = static_cast<Decoration>(ops[1]);
@@ -558,7 +560,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpMemberDecorate:
 	{
-		updateSection(8, instruction.offset);
+		updateSection(SECTION_ANNOTATIONS, instruction.offset);
 
 		uint32_t id = ops[0];
 		uint32_t member = ops[1];
@@ -572,7 +574,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpMemberDecorateStringGOOGLE:
 	{
-		updateSection(8, instruction.offset);
+		updateSection(SECTION_ANNOTATIONS, instruction.offset);
 
 		uint32_t id = ops[0];
 		uint32_t member = ops[1];
@@ -584,7 +586,7 @@ void Parser::parse(const Instruction &instruction)
 	// Build up basic types.
 	case OpTypeVoid:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
@@ -594,7 +596,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeBool:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
@@ -605,7 +607,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeFloat:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		uint32_t width = ops[1];
@@ -624,7 +626,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeInt:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		uint32_t width = ops[1];
@@ -640,7 +642,7 @@ void Parser::parse(const Instruction &instruction)
 	// since we can refer to decorations on pointee classes which is needed for UBO/SSBO, I/O blocks in geometry/tess etc.
 	case OpTypeVector:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		uint32_t vecsize = ops[2];
@@ -657,7 +659,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeMatrix:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		uint32_t colcount = ops[2];
@@ -674,7 +676,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeArray:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		uint32_t tid = ops[1];
@@ -704,7 +706,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeRuntimeArray:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 
@@ -728,7 +730,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeImage:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
@@ -746,7 +748,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeSampledImage:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		uint32_t imagetype = ops[1];
@@ -759,7 +761,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeSampler:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
@@ -769,7 +771,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypePointer:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 
@@ -803,7 +805,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeForwardPointer:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		auto &ptrbase = set<SPIRType>(id, op);
@@ -820,7 +822,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeStruct:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
@@ -860,7 +862,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeFunction:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		uint32_t ret = ops[1];
@@ -873,7 +875,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeAccelerationStructureKHR:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
@@ -883,7 +885,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpTypeRayQueryKHR:
 	{
-		updateSection(9, instruction.offset);
+		updateSection(SECTION_TYPES, instruction.offset);
 
 		uint32_t id = ops[0];
 		auto &type = set<SPIRType>(id, op);
@@ -1034,7 +1036,7 @@ void Parser::parse(const Instruction &instruction)
 	// Functions
 	case OpFunction:
 	{
-		updateSection(10, instruction.offset);
+		updateSection(SECTION_FUNCS, instruction.offset);
 
 		uint32_t res = ops[0];
 		uint32_t id = ops[1];
@@ -1063,7 +1065,7 @@ void Parser::parse(const Instruction &instruction)
 
 	case OpFunctionEnd:
 	{
-		updateSection(10, instruction.offset);
+		updateSection(SECTION_FUNCS, instruction.offset);
 
 		if (current_block)
 		{
@@ -1079,7 +1081,7 @@ void Parser::parse(const Instruction &instruction)
 	// Blocks
 	case OpLabel:
 	{
-		updateSection(10, instruction.offset);
+		updateSection(SECTION_FUNCS, instruction.offset);
 
 		// OpLabel always starts a block.
 		if (!current_function)

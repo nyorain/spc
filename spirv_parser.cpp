@@ -22,6 +22,7 @@
  */
 
 #include "spirv_parser.hpp"
+#include "NonSemanticShaderDebugInfo100.h"
 #include <assert.h>
 
 using namespace std;
@@ -190,11 +191,13 @@ void Parser::updateSection(uint32_t newSection, uint32_t offset) {
 	assert(newSection >= section);
 	assert(newSection <= std::size(ir.section_offsets.unnamed));
 
-	if(newSection == section) {
+	if(newSection == section)
+	{
 		return;
 	}
 
-	for(; section < newSection; ++section) {
+	for(; section < newSection; ++section)
+	{
 		// offset - 1 is needed because in parse() we adjust offsets
 		// to point to the first argument
 		ir.section_offsets.unnamed[section] = offset - 1;
@@ -280,8 +283,7 @@ void Parser::parse(const Instruction &instruction)
 		}
 
 		if(length > 3) {
-			// TODO: nope, thats a literal
-			source.sourceID = ops[3];
+			source.source = extract_string(ir.spirv, instruction.offset + 3);
 		}
 
 		break;
@@ -363,6 +365,63 @@ void Parser::parse(const Instruction &instruction)
 				const auto *type = maybe_get<SPIRType>(ops[0]);
 				if (type)
 					ir.load_type_width.insert({ ops[1], type->width });
+			}
+		}
+
+		if (length > 4)
+		{
+			const auto *extSet = maybe_get<SPIRExtension>(ops[2]);
+
+			if(extSet->ext == SPIRExtension::NonSemanticShaderDebugInfo)
+			{
+				const auto instr = ops[3];
+				if(instr == NonSemanticShaderDebugInfo100DebugSource)
+				{
+					auto& source = ir.sources.emplace_back();
+					source.fileID = ops[4];
+					source.defineID = ops[1];
+
+					if (length >= 6)
+					{
+						source.source = ir.get<SPIRString>(ops[5]).str;
+					}
+				}
+				else if(instr == NonSemanticShaderDebugInfo100DebugLine)
+				{
+					assert(length >= 9);
+					auto sourceID = ops[4];
+					auto lineStart = ir.get<SPIRConstant>(ops[5]).scalar_i32();
+					auto colStart = ir.get<SPIRConstant>(ops[7]).scalar_i32();
+
+					for(auto& source : ir.sources)
+					{
+						if(source.defineID != sourceID)
+						{
+							continue;
+						}
+
+						auto& marker = source.line_markers.emplace_back();
+						marker.line = lineStart;
+						marker.col = colStart;
+						marker.offset = instruction.offset - 1;
+						marker.function = current_function;
+						marker.block = current_block;
+						break;
+					}
+				}
+				else if(instr == NonSemanticShaderDebugInfo100DebugLocalVariable)
+				{
+					assert(length >= 11);
+					auto& lvar = set<SPIRDebugLocalVariable>(ops[1]);
+					lvar.nameID = ops[4];
+				}
+				else if(instr == NonSemanticShaderDebugInfo100DebugDeclare)
+				{
+					assert(length >= 7);
+					auto& lvar = get<SPIRDebugLocalVariable>(ops[4]);
+					auto& var = get<SPIRVariable>(ops[5]);
+					var.debugLocalVariables.push_back(lvar.self);
+				}
 			}
 		}
 		break;

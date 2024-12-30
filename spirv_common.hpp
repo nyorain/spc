@@ -763,6 +763,9 @@ struct SPIREntryPoint
 	uint32_t output_primitives = 0;
 	spv::ExecutionModel model = spv::ExecutionModelMax;
 	bool geometry_passthrough = false;
+
+	uint32_t offset = 0; // in words in spirv
+	uint32_t interface_offset = 0; // in words in spirv
 };
 
 struct SPIRExpression : IVariant

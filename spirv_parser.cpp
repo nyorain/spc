@@ -439,6 +439,9 @@ void Parser::parse(const Instruction &instruction)
 		// Strings need nul-terminator and consume the whole word.
 		uint32_t strlen_words = uint32_t((e.name.size() + 1 + 3) >> 2);
 
+		e.offset = instruction.offset - 1;
+		e.interface_offset = instruction.offset + strlen_words + 2;
+
 		for (uint32_t i = strlen_words + 2; i < instruction.length; i++)
 			e.interface_variables.push_back(ops[i]);
 

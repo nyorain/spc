@@ -881,6 +881,15 @@ struct SPIRBlock : IVariant
 
 	SmallVector<Instruction> ops;
 
+	// TODO: this could be solved with a cleaner design, combining
+	// phi instructions and variables/cases
+	struct PhiInstruction
+	{
+		uint32_t offset;
+	};
+
+	SmallVector<PhiInstruction> phi_instructions;
+
 	struct Phi
 	{
 		ID local_variable; // flush local variable ...

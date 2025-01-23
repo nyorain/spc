@@ -1105,6 +1105,8 @@ void Parser::parse(const Instruction &instruction)
 
 		current_function->add_local_variable(id);
 
+		current_block->phi_instructions.push_back({instruction.offset - 1});
+
 		for (uint32_t i = 2; i + 2 <= length; i += 2)
 			current_block->phi_variables.push_back({ ops[i], ops[i + 1], id });
 		break;

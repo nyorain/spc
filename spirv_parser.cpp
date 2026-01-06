@@ -221,7 +221,15 @@ void Parser::parse(const Instruction &instruction)
 
 	switch (op)
 	{
-	case OpSourceContinued: // TODO: support!
+	case OpSourceContinued:
+		updateSection(SECTION_DEBUG, instruction.offset);
+		if (!ir.sources.empty())
+		{
+			auto& dst = ir.sources.back();
+			dst.source += extract_string(ir.spirv, instruction.offset + 0);
+		}
+		break;
+
 	case OpSourceExtension:
 	case OpModuleProcessed:
 		updateSection(SECTION_DEBUG, instruction.offset);
